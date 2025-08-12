@@ -1,0 +1,442 @@
+# 🏪 RESTAURANT API ENDPOINTS - COMPLETE LIST
+
+## Base URL: http://localhost:5000/api/restaurant
+
+Authentication: All endpoints require Authorization: Bearer <token> header
+
+---
+
+## 1. RESTAURANT MANAGEMENT
+
+### Get Restaurant Profile
+GET /api/restaurant
+Authorization: Bearer <token>
+
+### Create/Update Restaurant
+POST /api/restaurant
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "name": "Spice Garden",
+  "description": "Authentic Indian cuisine",
+  "address": {
+    "street": "10 Spice Lane",
+    "city": "Mumbai",
+    "state": "Maharashtra",
+    "pincode": "400004"
+  },
+  "phone": "9876543212",
+  "email": "info@spicegarden.com",
+  "cuisine": ["Indian", "North Indian"],
+  "deliveryRadius": 5,
+  "deliveryFee": 30,
+  "minimumOrder": 200
+}
+
+---
+
+## 2. MENU MANAGEMENT
+
+### Get Menu Items
+GET /api/restaurant/menu
+Authorization: Bearer <token>
+
+### Add Menu Item
+POST /api/restaurant/menu
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "name": "Butter Chicken",
+  "description": "Creamy tomato-based curry",
+  "price": 350,
+  "category": "Main Course",
+  "image": "https://example.com/butter-chicken.jpg",
+  "isVegetarian": false,
+  "isSpicy": false,
+  "preparationTime": 20,
+  "allergens": ["dairy"],
+  "nutritionalInfo": {
+    "calories": 450,
+    "protein": 25,
+    "carbs": 15,
+    "fat": 30
+  }
+}
+
+### Update Menu Item
+PUT /api/restaurant/menu/:itemId
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "price": 380,
+  "isOutOfStock": false,
+  "preparationTime": 25
+}
+
+### Delete Menu Item
+DELETE /api/restaurant/menu/:itemId
+Authorization: Bearer <token>
+
+---
+
+## 3. ORDER MANAGEMENT
+
+### Get Orders (with filters)
+GET /api/restaurant/orders?page=1&limit=10&status=preparing&dateFrom=2024-01-01&dateTo=2024-01-31
+Authorization: Bearer <token>
+
+Query Parameters:
+- page - Page number (default: 1)
+- limit - Items per page (1-50, default: 10)
+- status - Order status filter
+- dateFrom - Start date (ISO format)
+- dateTo - End date (ISO format)
+
+Status Options: placed, confirmed, preparing, out_for_delivery, delivered, rejected, cancelled
+
+### Get Order Details
+GET /api/restaurant/orders/:orderId
+Authorization: Bearer <token>
+
+### Update Order Status
+PATCH /api/restaurant/orders/:orderId/status
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "status": "preparing",
+  "message": "Order is being prepared",
+  "estimatedDeliveryTime": "2024-01-15T20:30:00Z"
+}
+
+---
+
+## 4. DASHBOARD ANALYTICS
+
+### Get Dashboard Metrics
+GET /api/restaurant/dashboard
+Authorization: Bearer <token>
+
+Response:
+{
+  "success": true,
+  "data": {
+    "sales": {
+      "today": { "totalSales": 1500, "orderCount": 5 },
+      "week": { "totalSales": 8500, "orderCount": 25 },
+      "month": { "totalSales": 35000, "orderCount": 120 }
+    },
+    "orderStatusCounts": {
+      "placed": 3,
+      "confirmed": 2,
+      "preparing": 1,
+      "delivered": 15
+    },
+    "recentOrders": [...]
+  }
+}
+
+### Get Reports
+GET /api/restaurant/reports?period=month&startDate=2024-01-01&endDate=2024-01-31
+Authorization: Bearer <token>
+
+Response:
+{
+  "success": true,
+  "data": {
+    "period": "month",
+    "dateRange": { "start": "2024-01-01T00:00:00.000Z", "end": "2024-01-31T23:59:59.999Z" },
+    "summary": {
+      "totalOrders": 150,
+      "totalRevenue": 45000,
+      "averageOrderValue": 300,
+      "statusBreakdown": {
+        "delivered": 120,
+        "preparing": 15,
+        "placed": 10,
+        "cancelled": 5
+      }
+    },
+    "charts": {
+      "dailyRevenue": [
+        { "date": "2024-01-01", "revenue": 1500 },
+        { "date": "2024-01-02", "revenue": 1800 }
+      ]
+    },
+    "topSellingItems": [
+      { "name": "Butter Chicken", "quantity": 45 },
+      { "name": "Biryani", "quantity": 38 }
+    ],
+    "recentOrders": [...]
+  }
+}
+
+### Get Recent Activity
+GET /api/restaurant/activity?limit=20
+Authorization: Bearer <token>
+
+Response:
+{
+  "success": true,
+  "data": {
+    "activities": [
+      {
+        "id": "order_id",
+        "type": "order",
+        "action": "Order #1234 placed",
+        "description": "3 items - ₹450",
+        "timestamp": "2024-01-15T10:30:00Z",
+        "status": "placed",
+        "customer": "John Doe"
+      },
+      {
+        "id": "support_id",
+        "type": "support",
+        "action": "Support ticket open",
+        "description": "Late delivery issue",
+        "timestamp": "2024-01-15T09:15:00Z",
+        "status": "open",
+        "customer": "Jane Smith"
+      }
+    ],
+    "total": 20
+  }
+}
+
+---
+
+## 5. SETTINGS MANAGEMENT
+
+### Get Restaurant Settings
+GET /api/restaurant/settings
+Authorization: Bearer <token>
+
+### Update Restaurant Settings
+PUT /api/restaurant/settings
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "name": "Updated Restaurant Name",
+  "description": "Updated description",
+  "deliveryFee": 40,
+  "minimumOrder": 250,
+  "isActive": true
+}
+
+---
+
+## 6. NOTIFICATIONS
+
+### Send Notification
+POST /api/restaurant/notifications
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "title": "Special Offer",
+  "message": "Get 20% off on all orders today!",
+  "type": "info",
+  "targetUsers": ["all", "regular_customers"]
+}
+
+---
+
+## 7. SUPPORT QUERIES
+
+### Get Support Queries
+GET /api/restaurant/support?page=1&limit=10&status=open
+Authorization: Bearer <token>
+
+Query Parameters:
+- page - Page number (default: 1)
+- limit - Items per page (1-50, default: 10)
+- status - Query status filter
+
+Status Options: open, in_progress, resolved, closed
+
+---
+
+## VALIDATION RULES
+
+### Restaurant Creation/Update:
+- name: 2-100 characters
+- address.street: Required
+- address.city: Required
+- address.state: Required
+- address.pincode: 6 digits
+- phone: Valid Indian mobile number
+- email: Valid email (optional)
+- deliveryRadius: 1-20 km
+- deliveryFee: Non-negative
+- minimumOrder: Non-negative
+
+### Menu Item Creation/Update:
+- name: 2-100 characters
+- price: Non-negative
+- category: Required
+- image: Valid URL (optional)
+- preparationTime: 5-120 minutes
+- nutritionalInfo: All values non-negative
+
+### Order Status Update:
+- status: Must be valid order status
+- message: Required
+- estimatedDeliveryTime: Valid ISO date (optional)
+
+### Reports Query Parameters:
+- period: "week", "month", "year"
+- startDate: Valid ISO date
+- endDate: Valid ISO date
+
+### Activity Query Parameters:
+- limit: 1-100 (default: 20)
+
+### Notification Parameters:
+- title: Required
+- message: Required
+- type: "info", "warning", "success", "error"
+- targetUsers: Array of target user groups
+
+---
+
+## SECURITY FEATURES
+
+- Authentication Required: All endpoints need valid JWT token
+- Role-Based Access: Only restaurant owners can access these endpoints
+- Input Validation: Comprehensive validation for all inputs
+- Ownership Checks: Users can only access their own restaurant data
+
+---
+
+## RESPONSE FORMAT
+
+All endpoints return consistent JSON responses:
+
+{
+  "success": boolean,
+  "data": object | array,
+  "error": string (optional)
+}
+
+---
+
+## USAGE EXAMPLES
+
+### Create Restaurant:
+curl -X POST http://localhost:5000/api/restaurant \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Spice Garden",
+    "description": "Authentic Indian cuisine",
+    "address": {
+      "street": "10 Spice Lane",
+      "city": "Mumbai",
+      "state": "Maharashtra",
+      "pincode": "400004"
+    },
+    "phone": "9876543212",
+    "cuisine": ["Indian", "North Indian"],
+    "deliveryRadius": 5,
+    "deliveryFee": 30,
+    "minimumOrder": 200
+  }'
+
+### Get Orders:
+curl -X GET "http://localhost:5000/api/restaurant/orders?status=preparing&page=1&limit=10" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+### Update Order Status:
+curl -X PATCH http://localhost:5000/api/restaurant/orders/ORDER_ID/status \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "preparing",
+    "message": "Order is being prepared"
+  }'
+
+### Get Reports:
+curl -X GET "http://localhost:5000/api/restaurant/reports?period=month" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+### Send Notification:
+curl -X POST http://localhost:5000/api/restaurant/notifications \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Special Offer",
+    "message": "Get 20% off on all orders today!",
+    "type": "info",
+    "targetUsers": ["all"]
+  }'
+
+---
+
+## API SUMMARY
+
+| Category | Endpoints | Count |
+|----------|-----------|-------|
+| Restaurant Management | GET, POST | 2 |
+| Menu Management | GET, POST, PUT, DELETE | 4 |
+| Order Management | GET, GET/:id, PATCH | 3 |
+| Dashboard Analytics | GET dashboard, GET reports, GET activity | 3 |
+| Settings Management | GET, PUT | 2 |
+| Notifications | POST | 1 |
+| Support Queries | GET | 1 |
+
+Total Restaurant APIs: 16 endpoints
+
+---
+
+## DASHBOARD UI MAPPING
+
+| Dashboard Feature | API Endpoint | Status |
+|------------------|--------------|--------|
+| Total Orders | GET /api/restaurant/dashboard | ✅ |
+| Revenue | GET /api/restaurant/dashboard | ✅ |
+| Active Items | GET /api/restaurant/menu | ✅ |
+| Pending Orders | GET /api/restaurant/orders?status=placed | ✅ |
+| Recent Activity | GET /api/restaurant/activity | ✅ |
+| Add New Item | POST /api/restaurant/menu | ✅ |
+| View Reports | GET /api/restaurant/reports | ✅ |
+| Settings | GET/PUT /api/restaurant/settings | ✅ |
+| Send Notification | POST /api/restaurant/notifications | ✅ |
+
+Dashboard Coverage: 100% Complete ✅
+
+---
+
+## ERROR HANDLING
+
+Common HTTP status codes:
+- 200 - Success
+- 201 - Created
+- 400 - Bad Request (validation errors)
+- 401 - Unauthorized (invalid/missing token)
+- 403 - Forbidden (insufficient permissions)
+- 404 - Not Found
+- 500 - Internal Server Error
+
+Error Response Format:
+{
+  "success": false,
+  "error": "Error message",
+  "details": ["Validation error details"] // Optional
+}
+
+---
+
+## NOTES
+
+1. All endpoints require restaurant owner authentication
+2. All responses follow consistent JSON format
+3. Comprehensive input validation is applied
+4. Rate limiting is enabled for all endpoints
+5. CORS is configured for cross-origin requests
+6. All sensitive data is properly validated and sanitized
+7. Database queries are optimized with proper indexing
+8. Error handling is comprehensive with detailed error messages 

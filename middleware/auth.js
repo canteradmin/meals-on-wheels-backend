@@ -1,10 +1,18 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
-// Generate JWT token
+// Generate JWT token with conditional expiration
 const generateToken = (userId) => {
+  const jwtExpire = process.env.JWT_EXPIRE || "7d";
+
+  // If JWT_EXPIRE is set to "Unlimited" or "unlimited", don't set expiration
+  if (jwtExpire.toLowerCase() === "unlimited") {
+    return jwt.sign({ userId }, process.env.JWT_SECRET);
+  }
+
+  // Otherwise, use the specified expiration time
   return jwt.sign({ userId }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE || "7d",
+    expiresIn: jwtExpire,
   });
 };
 
@@ -38,7 +46,16 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
+    // Check if token is blacklisted (for logout functionality)
+    if (user.blacklistedTokens && user.blacklistedTokens.includes(token)) {
+      return res.status(401).json({
+        success: false,
+        error: "Token has been invalidated - please login again",
+      });
+    }
+
     req.user = user;
+    req.token = token; // Store token for potential logout use
     next();
   } catch (error) {
     if (error.name === "JsonWebTokenError") {

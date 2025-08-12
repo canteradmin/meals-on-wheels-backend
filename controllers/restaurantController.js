@@ -2,6 +2,134 @@ const Restaurant = require("../models/Restaurant");
 const Item = require("../models/Item");
 const Order = require("../models/Order");
 const SupportQuery = require("../models/SupportQuery");
+const User = require("../models/User");
+const bcrypt = require("bcryptjs");
+
+// Register restaurant with owner account
+const registerRestaurant = async (req, res) => {
+  try {
+    console.log("=== RESTAURANT REGISTRATION ENDPOINT HIT ===");
+    console.log("Request body:", JSON.stringify(req.body, null, 2));
+    console.log("Request URL:", req.originalUrl);
+    console.log("Request method:", req.method);
+
+    const {
+      // Owner details
+      ownerName,
+      ownerEmail,
+      ownerPhone,
+      ownerPassword,
+
+      // Restaurant details
+      restaurantName,
+      description,
+      address,
+      phone,
+      email,
+      cuisine,
+      openingHours,
+      deliveryRadius,
+      deliveryFee,
+      minimumOrder,
+    } = req.body;
+
+    // Check if user already exists
+    const existingUser = await User.findOne({
+      $or: [{ email: ownerEmail }, { phone: ownerPhone }],
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        error: "User with this email or phone already exists",
+      });
+    }
+
+    // Check if restaurant name already exists
+    const existingRestaurant = await Restaurant.findOne({
+      name: restaurantName,
+    });
+
+    if (existingRestaurant) {
+      return res.status(400).json({
+        success: false,
+        error: "Restaurant with this name already exists",
+      });
+    }
+
+    // Hash password
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(ownerPassword, saltRounds);
+
+    // Create restaurant owner user
+    const owner = new User({
+      name: ownerName,
+      email: ownerEmail,
+      phone: ownerPhone,
+      password: hashedPassword,
+      role: "restaurant_owner",
+    });
+
+    await owner.save();
+
+    // Create restaurant
+    const restaurant = new Restaurant({
+      owner: owner._id,
+      name: restaurantName,
+      description,
+      address,
+      phone,
+      email,
+      cuisine,
+      openingHours,
+      deliveryRadius,
+      deliveryFee,
+      minimumOrder,
+    });
+
+    await restaurant.save();
+
+    // Generate JWT token for the new owner
+    const jwt = require("jsonwebtoken");
+    const jwtExpire = process.env.JWT_EXPIRE || "7d";
+
+    let token;
+    if (jwtExpire.toLowerCase() === "unlimited") {
+      token = jwt.sign({ userId: owner._id }, process.env.JWT_SECRET);
+    } else {
+      token = jwt.sign({ userId: owner._id }, process.env.JWT_SECRET, {
+        expiresIn: jwtExpire,
+      });
+    }
+
+    // Remove password from response
+    const ownerResponse = {
+      _id: owner._id,
+      name: owner.name,
+      email: owner.email,
+      phone: owner.phone,
+      role: owner.role,
+      isActive: owner.isActive,
+      createdAt: owner.createdAt,
+    };
+
+    res.status(201).json({
+      success: true,
+      data: {
+        message: "Restaurant registered successfully",
+        owner: ownerResponse,
+        restaurant,
+        token,
+      },
+    });
+  } catch (error) {
+    console.error("Register restaurant error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to register restaurant",
+    });
+  }
+};
 
 // Get restaurant owner's restaurant
 const getRestaurant = async (req, res) => {
@@ -598,7 +726,337 @@ const getSupportQueries = async (req, res) => {
   }
 };
 
+// Get restaurant reports
+const getReports = async (req, res) => {
+  try {
+    const { period = "month", startDate, endDate } = req.query;
+
+    // Calculate date range
+    let start, end;
+    if (startDate && endDate) {
+      start = new Date(startDate);
+      end = new Date(endDate);
+    } else {
+      end = new Date();
+      switch (period) {
+        case "week":
+          start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case "month":
+          start = new Date(end.getFullYear(), end.getMonth(), 1);
+          break;
+        case "year":
+          start = new Date(end.getFullYear(), 0, 1);
+          break;
+        default:
+          start = new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
+      }
+    }
+
+    // Get restaurant
+    const restaurant = await Restaurant.findOne({ owner: req.user._id });
+    if (!restaurant) {
+      return res.status(404).json({
+        success: false,
+        error: "Restaurant not found",
+      });
+    }
+
+    // Get orders in date range
+    const orders = await Order.find({
+      restaurant: restaurant._id,
+      createdAt: { $gte: start, $lte: end },
+    }).populate("customer", "name");
+
+    // Calculate metrics
+    const totalOrders = orders.length;
+    const totalRevenue = orders.reduce(
+      (sum, order) => sum + order.totalAmount,
+      0
+    );
+    const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+    // Status breakdown
+    const statusBreakdown = orders.reduce((acc, order) => {
+      acc[order.status] = (acc[order.status] || 0) + 1;
+      return acc;
+    }, {});
+
+    // Daily revenue chart data
+    const dailyRevenue = {};
+    orders.forEach((order) => {
+      const date = order.createdAt.toISOString().split("T")[0];
+      dailyRevenue[date] = (dailyRevenue[date] || 0) + order.totalAmount;
+    });
+
+    // Top selling items
+    const itemSales = {};
+    orders.forEach((order) => {
+      order.items.forEach((item) => {
+        itemSales[item.name] = (itemSales[item.name] || 0) + item.quantity;
+      });
+    });
+
+    const topSellingItems = Object.entries(itemSales)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 10)
+      .map(([name, quantity]) => ({ name, quantity }));
+
+    res.json({
+      success: true,
+      data: {
+        period,
+        dateRange: { start, end },
+        summary: {
+          totalOrders,
+          totalRevenue,
+          averageOrderValue,
+          statusBreakdown,
+        },
+        charts: {
+          dailyRevenue: Object.entries(dailyRevenue).map(([date, revenue]) => ({
+            date,
+            revenue,
+          })),
+        },
+        topSellingItems,
+        recentOrders: orders.slice(0, 10),
+      },
+    });
+  } catch (error) {
+    console.error("Get reports error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to get reports",
+    });
+  }
+};
+
+// Get recent activity
+const getRecentActivity = async (req, res) => {
+  try {
+    const { limit = 20 } = req.query;
+
+    // Get restaurant
+    const restaurant = await Restaurant.findOne({ owner: req.user._id });
+    if (!restaurant) {
+      return res.status(404).json({
+        success: false,
+        error: "Restaurant not found",
+      });
+    }
+
+    // Get recent orders
+    const recentOrders = await Order.find({ restaurant: restaurant._id })
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit) / 2)
+      .populate("customer", "name");
+
+    // Get recent support queries
+    const recentSupport = await SupportQuery.find({
+      restaurant: restaurant._id,
+    })
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit) / 2)
+      .populate("customer", "name");
+
+    // Combine and format activities
+    const activities = [];
+
+    // Add order activities
+    recentOrders.forEach((order) => {
+      activities.push({
+        id: order._id,
+        type: "order",
+        action: `Order #${order.orderNumber} ${order.status}`,
+        description: `${order.items.length} items - ₹${order.totalAmount}`,
+        timestamp: order.createdAt,
+        status: order.status,
+        customer: order.customer?.name || "Unknown",
+      });
+    });
+
+    // Add support activities
+    recentSupport.forEach((query) => {
+      activities.push({
+        id: query._id,
+        type: "support",
+        action: `Support ticket ${query.status}`,
+        description: query.subject,
+        timestamp: query.createdAt,
+        status: query.status,
+        customer: query.customer?.name || "Unknown",
+      });
+    });
+
+    // Sort by timestamp and limit
+    activities.sort((a, b) => b.timestamp - a.timestamp);
+    activities.splice(parseInt(limit));
+
+    res.json({
+      success: true,
+      data: {
+        activities,
+        total: activities.length,
+      },
+    });
+  } catch (error) {
+    console.error("Get recent activity error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to get recent activity",
+    });
+  }
+};
+
+// Get restaurant settings
+const getRestaurantSettings = async (req, res) => {
+  try {
+    const restaurant = await Restaurant.findOne({ owner: req.user._id });
+    if (!restaurant) {
+      return res.status(404).json({
+        success: false,
+        error: "Restaurant not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        settings: {
+          name: restaurant.name,
+          description: restaurant.description,
+          phone: restaurant.phone,
+          email: restaurant.email,
+          address: restaurant.address,
+          cuisine: restaurant.cuisine,
+          deliveryRadius: restaurant.deliveryRadius,
+          deliveryFee: restaurant.deliveryFee,
+          minimumOrder: restaurant.minimumOrder,
+          isActive: restaurant.isActive,
+          operatingHours: restaurant.operatingHours,
+          paymentMethods: restaurant.paymentMethods,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Get restaurant settings error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to get restaurant settings",
+    });
+  }
+};
+
+// Update restaurant settings
+const updateRestaurantSettings = async (req, res) => {
+  try {
+    const {
+      name,
+      description,
+      phone,
+      email,
+      address,
+      cuisine,
+      deliveryRadius,
+      deliveryFee,
+      minimumOrder,
+      isActive,
+      operatingHours,
+      paymentMethods,
+    } = req.body;
+
+    const restaurant = await Restaurant.findOne({ owner: req.user._id });
+    if (!restaurant) {
+      return res.status(404).json({
+        success: false,
+        error: "Restaurant not found",
+      });
+    }
+
+    // Update fields
+    if (name) restaurant.name = name;
+    if (description !== undefined) restaurant.description = description;
+    if (phone) restaurant.phone = phone;
+    if (email) restaurant.email = email;
+    if (address) restaurant.address = address;
+    if (cuisine) restaurant.cuisine = cuisine;
+    if (deliveryRadius !== undefined)
+      restaurant.deliveryRadius = deliveryRadius;
+    if (deliveryFee !== undefined) restaurant.deliveryFee = deliveryFee;
+    if (minimumOrder !== undefined) restaurant.minimumOrder = minimumOrder;
+    if (isActive !== undefined) restaurant.isActive = isActive;
+    if (operatingHours) restaurant.operatingHours = operatingHours;
+    if (paymentMethods) restaurant.paymentMethods = paymentMethods;
+
+    await restaurant.save();
+
+    res.json({
+      success: true,
+      data: {
+        message: "Restaurant settings updated successfully",
+        restaurant,
+      },
+    });
+  } catch (error) {
+    console.error("Update restaurant settings error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to update restaurant settings",
+    });
+  }
+};
+
+// Send notification
+const sendNotification = async (req, res) => {
+  try {
+    const { title, message, type, targetUsers } = req.body;
+
+    // Get restaurant
+    const restaurant = await Restaurant.findOne({ owner: req.user._id });
+    if (!restaurant) {
+      return res.status(404).json({
+        success: false,
+        error: "Restaurant not found",
+      });
+    }
+
+    // In a real application, you would integrate with a notification service
+    // For now, we'll just log the notification
+    console.log("Notification sent:", {
+      restaurant: restaurant.name,
+      title,
+      message,
+      type,
+      targetUsers,
+      timestamp: new Date(),
+    });
+
+    res.json({
+      success: true,
+      data: {
+        message: "Notification sent successfully",
+        notification: {
+          id: Date.now().toString(),
+          title,
+          message,
+          type,
+          targetUsers,
+          sentAt: new Date(),
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Send notification error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to send notification",
+    });
+  }
+};
+
 module.exports = {
+  registerRestaurant,
   getRestaurant,
   createRestaurant,
   getMenuItems,
@@ -610,4 +1068,9 @@ module.exports = {
   updateOrderStatus,
   getDashboard,
   getSupportQueries,
+  getReports,
+  getRecentActivity,
+  getRestaurantSettings,
+  updateRestaurantSettings,
+  sendNotification,
 };

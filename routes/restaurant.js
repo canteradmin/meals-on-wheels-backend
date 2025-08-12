@@ -6,6 +6,7 @@ const {
 } = require("../middleware/auth");
 const { handleValidationErrors } = require("../middleware/validation");
 const {
+  registerRestaurant,
   getRestaurant,
   createRestaurant,
   getMenuItems,
@@ -17,11 +18,82 @@ const {
   updateOrderStatus,
   getDashboard,
   getSupportQueries,
+  getReports,
+  getRecentActivity,
+  getRestaurantSettings,
+  updateRestaurantSettings,
+  sendNotification,
 } = require("../controllers/restaurantController");
 
 const router = express.Router();
 
-// Apply authentication to all routes
+// Public restaurant registration route (no authentication required)
+router.post(
+  "/register",
+  [
+    // Owner validation
+    body("ownerName")
+      .isLength({ min: 2, max: 50 })
+      .withMessage("Owner name must be between 2 and 50 characters"),
+    body("ownerEmail")
+      .isEmail()
+      .normalizeEmail()
+      .withMessage("Please provide a valid owner email address"),
+    body("ownerPhone")
+      .isMobilePhone("en-IN")
+      .withMessage("Please provide a valid owner phone number"),
+    body("ownerPassword")
+      .isLength({ min: 6 })
+      .withMessage("Password must be at least 6 characters long"),
+
+    // Restaurant validation
+    body("restaurantName")
+      .isLength({ min: 2, max: 100 })
+      .withMessage("Restaurant name must be between 2 and 100 characters"),
+    body("description")
+      .optional()
+      .isString()
+      .withMessage("Description must be a string"),
+    body("address.street").notEmpty().withMessage("Street address is required"),
+    body("address.city").notEmpty().withMessage("City is required"),
+    body("address.state").notEmpty().withMessage("State is required"),
+    body("address.pincode")
+      .isLength({ min: 6, max: 6 })
+      .withMessage("Pincode must be 6 digits"),
+    body("phone")
+      .isMobilePhone("en-IN")
+      .withMessage("Please provide a valid restaurant phone number"),
+    body("email")
+      .optional()
+      .isEmail()
+      .normalizeEmail()
+      .withMessage("Please provide a valid restaurant email address"),
+    body("cuisine")
+      .optional()
+      .isArray()
+      .withMessage("Cuisine must be an array"),
+    body("cuisine.*")
+      .optional()
+      .isString()
+      .withMessage("Cuisine items must be strings"),
+    body("deliveryRadius")
+      .optional()
+      .isFloat({ min: 1, max: 20 })
+      .withMessage("Delivery radius must be between 1 and 20 km"),
+    body("deliveryFee")
+      .optional()
+      .isFloat({ min: 0 })
+      .withMessage("Delivery fee must be non-negative"),
+    body("minimumOrder")
+      .optional()
+      .isFloat({ min: 0 })
+      .withMessage("Minimum order must be non-negative"),
+    handleValidationErrors,
+  ],
+  registerRestaurant
+);
+
+// Apply authentication to all other routes
 router.use(authenticateToken, requireRestaurantOwner);
 
 // Restaurant management routes
@@ -298,6 +370,103 @@ router.get(
     handleValidationErrors,
   ],
   getSupportQueries
+);
+
+// Reports routes
+router.get(
+  "/reports",
+  [
+    query("period")
+      .optional()
+      .isIn(["week", "month", "year"])
+      .withMessage("Period must be week, month, or year"),
+    query("startDate")
+      .optional()
+      .isISO8601()
+      .withMessage("Start date must be a valid date"),
+    query("endDate")
+      .optional()
+      .isISO8601()
+      .withMessage("End date must be a valid date"),
+    handleValidationErrors,
+  ],
+  getReports
+);
+
+// Recent activity routes
+router.get(
+  "/activity",
+  [
+    query("limit")
+      .optional()
+      .isInt({ min: 1, max: 100 })
+      .withMessage("Limit must be between 1 and 100"),
+    handleValidationErrors,
+  ],
+  getRecentActivity
+);
+
+// Settings routes
+router.get("/settings", getRestaurantSettings);
+
+router.put(
+  "/settings",
+  [
+    body("name")
+      .optional()
+      .isLength({ min: 2, max: 100 })
+      .withMessage("Restaurant name must be between 2 and 100 characters"),
+    body("description")
+      .optional()
+      .isString()
+      .withMessage("Description must be a string"),
+    body("phone")
+      .optional()
+      .isMobilePhone("en-IN")
+      .withMessage("Please provide a valid phone number"),
+    body("email")
+      .optional()
+      .isEmail()
+      .normalizeEmail()
+      .withMessage("Please provide a valid email address"),
+    body("deliveryRadius")
+      .optional()
+      .isFloat({ min: 1, max: 20 })
+      .withMessage("Delivery radius must be between 1 and 20 km"),
+    body("deliveryFee")
+      .optional()
+      .isFloat({ min: 0 })
+      .withMessage("Delivery fee must be non-negative"),
+    body("minimumOrder")
+      .optional()
+      .isFloat({ min: 0 })
+      .withMessage("Minimum order must be non-negative"),
+    body("isActive")
+      .optional()
+      .isBoolean()
+      .withMessage("isActive must be a boolean"),
+    handleValidationErrors,
+  ],
+  updateRestaurantSettings
+);
+
+// Notification routes
+router.post(
+  "/notifications",
+  [
+    body("title").notEmpty().withMessage("Notification title is required"),
+    body("message").notEmpty().withMessage("Notification message is required"),
+    body("type")
+      .optional()
+      .isIn(["info", "warning", "success", "error"])
+      .withMessage("Type must be info, warning, success, or error"),
+    body("targetUsers")
+      .optional()
+      .isArray()
+      .withMessage("Target users must be an array"),
+    handleValidationErrors,
+  ],
+  sendNotification
 );
 
 module.exports = router;

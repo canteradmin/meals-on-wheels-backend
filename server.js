@@ -10,6 +10,7 @@ const authRoutes = require("./routes/auth");
 const customerRoutes = require("./routes/customer");
 const restaurantRoutes = require("./routes/restaurant");
 const supportRoutes = require("./routes/support");
+const cartRoutes = require("./routes/cart");
 
 const app = express();
 
@@ -47,6 +48,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/customer", customerRoutes);
 app.use("/api/restaurant", restaurantRoutes);
 app.use("/api/support", supportRoutes);
+app.use("/api/cart", cartRoutes);
 
 // 404 handler
 app.use("*", (req, res) => {

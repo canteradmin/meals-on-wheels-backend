@@ -7,14 +7,18 @@ A comprehensive RESTful backend for a restaurant platform built with Node.js, Ex
 ### 🔐 Authentication & Authorization
 
 - JWT-based authentication with role separation
+- **Conditional JWT expiration** - Unlimited or time-based token expiration
+- **Token blacklisting** - Secure logout with immediate token invalidation
 - Role-based access control (customer vs restaurant_owner)
 - Secure password hashing with bcrypt
 - Token-based session management
+- Multi-device logout support
 
 ### 👥 Customer Features
 
 - User registration and profile management
 - Multiple address management (home, work, other)
+- **Shopping cart management** with item persistence
 - Order placement with real-time tracking
 - Order history with pagination
 - Support query system
@@ -38,6 +42,7 @@ A comprehensive RESTful backend for a restaurant platform built with Node.js, Ex
 
 ### 🛒 Order Management
 
+- **Shopping cart system** with automatic expiration
 - Complete order lifecycle: placed → confirmed → preparing → out_for_delivery → delivered
 - Order rejection and cancellation support
 - Real-time tracking with history
@@ -72,11 +77,13 @@ meels-on-wheels-backend/
 │   ├── Restaurant.js      # Restaurant model
 │   ├── Item.js            # Menu item model
 │   ├── Order.js           # Order model with tracking
+│   ├── Cart.js            # Shopping cart model
 │   └── SupportQuery.js    # Support system model
 ├── controllers/           # Business logic
 │   ├── authController.js  # Authentication logic
 │   ├── customerController.js # Customer operations
 │   ├── restaurantController.js # Restaurant operations
+│   ├── cartController.js  # Cart management logic
 │   └── supportController.js # Support system logic
 ├── middleware/            # Custom middleware
 │   ├── auth.js           # JWT authentication
@@ -86,9 +93,11 @@ meels-on-wheels-backend/
 │   ├── auth.js          # Authentication routes
 │   ├── customer.js      # Customer routes
 │   ├── restaurant.js    # Restaurant routes
+│   ├── cart.js          # Cart management routes
 │   └── support.js       # Support routes
 ├── scripts/             # Utility scripts
-│   └── seed.js         # Database seeding
+│   ├── seed.js         # Database seeding
+│   └── cleanExpiredCarts.js # Cart cleanup utility
 ├── server.js           # Main server file
 ├── package.json        # Dependencies
 └── README.md          # Documentation
@@ -129,7 +138,15 @@ MONGODB_URI=mongodb://localhost:27017/meels-on-wheels
 
 # JWT Configuration
 JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
-JWT_EXPIRE=7d
+
+# JWT Expiration Settings
+# Options:
+# - "Unlimited" or "unlimited" - Tokens never expire (only logout can invalidate)
+# - "7d" - Tokens expire in 7 days
+# - "24h" - Tokens expire in 24 hours
+# - "1h" - Tokens expire in 1 hour
+# - Any valid time string supported by jsonwebtoken
+JWT_EXPIRE=Unlimited
 
 # Rate Limiting
 RATE_LIMIT_WINDOW_MS=900000
@@ -151,6 +168,50 @@ npm start
 ```bash
 npm run seed
 ```
+
+## JWT Configuration & Security
+
+### Token Expiration Options
+
+The system supports flexible JWT token expiration through the `JWT_EXPIRE` environment variable:
+
+#### **Unlimited Tokens (Recommended for Development)**
+
+```env
+JWT_EXPIRE=Unlimited
+```
+
+- Tokens never expire automatically
+- Only logout can invalidate tokens
+- Users stay logged in until they explicitly logout
+- Perfect for development and testing
+
+#### **Time-Based Expiration**
+
+```env
+JWT_EXPIRE=7d    # 7 days
+JWT_EXPIRE=24h   # 24 hours
+JWT_EXPIRE=1h    # 1 hour
+```
+
+- Tokens expire after the specified time
+- Users need to login again after expiration
+- Logout still works to invalidate tokens immediately
+
+### Token Blacklisting
+
+- All logout operations use token blacklisting
+- Invalidated tokens are stored in the database
+- Authentication checks blacklist on every request
+- Provides immediate token invalidation
+
+### Security Features
+
+- **Conditional Expiration**: Choose between unlimited and time-based tokens
+- **Immediate Invalidation**: Logout immediately invalidates tokens
+- **Multi-Device Support**: Logout from all devices option
+- **Blacklist Tracking**: All invalidated tokens are tracked
+- **Secure Storage**: Tokens are hashed and stored securely
 
 ## API Documentation
 
@@ -229,6 +290,120 @@ Content-Type: application/json
 }
 ```
 
+### Change Password
+
+```http
+PUT /api/auth/change-password
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "currentPassword": "oldpassword123",
+  "newPassword": "newpassword123"
+}
+```
+
+### Logout (Current Device)
+
+```http
+POST /api/auth/logout
+Authorization: Bearer <token>
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Logged out successfully"
+  }
+}
+```
+
+### Logout from All Devices
+
+```http
+POST /api/auth/logout-all
+Authorization: Bearer <token>
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Logged out from all devices successfully"
+  }
+}
+```
+
+### Forgot Password
+
+```http
+POST /api/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "john@example.com"
+}
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Password reset instructions sent to your email",
+    "resetToken": "abc123...",
+    "resetTokenExpiry": "2024-01-15T20:30:00Z"
+  }
+}
+```
+
+### Verify Reset Token
+
+```http
+GET /api/auth/reset-password/:resetToken
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Reset token is valid",
+    "email": "john@example.com"
+  }
+}
+```
+
+### Reset Password
+
+```http
+POST /api/auth/reset-password
+Content-Type: application/json
+
+{
+  "resetToken": "abc123...",
+  "newPassword": "newpassword123"
+}
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Password reset successfully"
+  }
+}
+```
+
 ## Customer Endpoints
 
 ### Address Management
@@ -267,8 +442,14 @@ Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "address": "456 Updated Street",
-  "city": "Mumbai"
+  "type": "home",
+  "name": "John Doe",
+  "phone": "9876543210",
+  "address": "123 Main Street",
+  "city": "Mumbai",
+  "state": "Telangana",
+  "pincode": "400001",
+  "isDefault": true
 }
 ```
 
@@ -322,6 +503,100 @@ Authorization: Bearer <token>
 ```http
 GET /api/customer/orders/:orderId/track
 Authorization: Bearer <token>
+```
+
+## Cart Management Endpoints
+
+### Get Cart Contents
+
+```http
+GET /api/cart
+Authorization: Bearer <token>
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "cart": {
+      "items": [
+        {
+          "item": "item_id",
+          "name": "Butter Chicken",
+          "price": 350,
+          "quantity": 2,
+          "totalPrice": 700,
+          "specialInstructions": "Extra spicy"
+        }
+      ],
+      "subtotal": 700,
+      "deliveryFee": 30,
+      "tax": 35,
+      "totalAmount": 765,
+      "itemCount": 2,
+      "restaurant": {
+        "name": "Spice Garden",
+        "address": {...}
+      }
+    }
+  }
+}
+```
+
+### Add Item to Cart
+
+```http
+POST /api/cart
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "itemId": "item_id",
+  "quantity": 2,
+  "specialInstructions": "Extra spicy"
+}
+```
+
+### Update Item Quantity
+
+```http
+PUT /api/cart/:itemId
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "quantity": 3
+}
+```
+
+### Remove Item from Cart
+
+```http
+DELETE /api/cart/:itemId
+Authorization: Bearer <token>
+```
+
+### Clear Cart
+
+```http
+DELETE /api/cart
+Authorization: Bearer <token>
+```
+
+### Checkout Cart (Convert to Order)
+
+```http
+POST /api/cart/checkout
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "deliveryAddressId": "address_id",
+  "specialInstructions": "Ring doorbell twice",
+  "paymentMethod": "cod"
+}
 ```
 
 ## Restaurant Owner Endpoints
@@ -469,6 +744,127 @@ Response:
 }
 ```
 
+#### Get Reports
+
+```http
+GET /api/restaurant/reports?period=month&startDate=2024-01-01&endDate=2024-01-31
+Authorization: Bearer <token>
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "period": "month",
+    "dateRange": { "start": "2024-01-01T00:00:00.000Z", "end": "2024-01-31T23:59:59.999Z" },
+    "summary": {
+      "totalOrders": 150,
+      "totalRevenue": 45000,
+      "averageOrderValue": 300,
+      "statusBreakdown": {
+        "delivered": 120,
+        "preparing": 15,
+        "placed": 10,
+        "cancelled": 5
+      }
+    },
+    "charts": {
+      "dailyRevenue": [
+        { "date": "2024-01-01", "revenue": 1500 },
+        { "date": "2024-01-02", "revenue": 1800 }
+      ]
+    },
+    "topSellingItems": [
+      { "name": "Butter Chicken", "quantity": 45 },
+      { "name": "Biryani", "quantity": 38 }
+    ],
+    "recentOrders": [...]
+  }
+}
+```
+
+#### Get Recent Activity
+
+```http
+GET /api/restaurant/activity?limit=20
+Authorization: Bearer <token>
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "activities": [
+      {
+        "id": "order_id",
+        "type": "order",
+        "action": "Order #1234 placed",
+        "description": "3 items - ₹450",
+        "timestamp": "2024-01-15T10:30:00Z",
+        "status": "placed",
+        "customer": "John Doe"
+      },
+      {
+        "id": "support_id",
+        "type": "support",
+        "action": "Support ticket open",
+        "description": "Late delivery issue",
+        "timestamp": "2024-01-15T09:15:00Z",
+        "status": "open",
+        "customer": "Jane Smith"
+      }
+    ],
+    "total": 20
+  }
+}
+```
+
+### Settings Management
+
+#### Get Restaurant Settings
+
+```http
+GET /api/restaurant/settings
+Authorization: Bearer <token>
+```
+
+#### Update Restaurant Settings
+
+```http
+PUT /api/restaurant/settings
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "name": "Updated Restaurant Name",
+  "description": "Updated description",
+  "deliveryFee": 40,
+  "minimumOrder": 250,
+  "isActive": true
+}
+```
+
+### Notifications
+
+#### Send Notification
+
+```http
+POST /api/restaurant/notifications
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "title": "Special Offer",
+  "message": "Get 20% off on all orders today!",
+  "type": "info",
+  "targetUsers": ["all", "regular_customers"]
+}
+```
+
 ## Support System Endpoints
 
 ### Create Support Query
@@ -569,6 +965,44 @@ The API uses consistent error responses:
 }
 ```
 
+### Authentication Error Examples
+
+#### **Token Expired**
+
+```json
+{
+  "success": false,
+  "error": "Token expired"
+}
+```
+
+#### **Token Invalidated (After Logout)**
+
+```json
+{
+  "success": false,
+  "error": "Token has been invalidated - please login again"
+}
+```
+
+#### **Invalid Token**
+
+```json
+{
+  "success": false,
+  "error": "Invalid token"
+}
+```
+
+#### **Missing Token**
+
+```json
+{
+  "success": false,
+  "error": "Access token required"
+}
+```
+
 Common HTTP status codes:
 
 - `200` - Success
@@ -582,12 +1016,15 @@ Common HTTP status codes:
 ## Security Features
 
 - **JWT Authentication**: Secure token-based authentication
+- **Conditional Token Expiration**: Flexible JWT expiration (unlimited or time-based)
+- **Token Blacklisting**: Secure logout with immediate token invalidation
 - **Password Hashing**: bcrypt with salt rounds
 - **Rate Limiting**: Prevents abuse with configurable limits
 - **Input Validation**: Comprehensive request validation
 - **CORS**: Configurable cross-origin resource sharing
 - **Helmet**: Security headers
 - **Ownership Checks**: Users can only access their own resources
+- **Multi-Device Logout**: Logout from all devices functionality
 
 ## Development
 
@@ -607,6 +1044,12 @@ npm test
 
 ```bash
 npm run seed
+```
+
+### Clean Expired Carts
+
+```bash
+npm run clean-carts
 ```
 
 ## Production Deployment

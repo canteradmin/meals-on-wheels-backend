@@ -11,6 +11,11 @@ const {
   getProfile,
   updateProfile,
   changePassword,
+  logout,
+  logoutAll,
+  forgotPassword,
+  resetPassword,
+  verifyResetToken,
 } = require("../controllers/authController");
 
 const router = express.Router();
@@ -90,6 +95,41 @@ router.put(
     handleValidationErrors,
   ],
   changePassword
+);
+
+// Logout (blacklist current token)
+router.post("/logout", authenticateToken, logout);
+
+// Logout from all devices (blacklist all tokens)
+router.post("/logout-all", authenticateToken, logoutAll);
+
+// Forgot password
+router.post(
+  "/forgot-password",
+  [
+    body("email")
+      .isEmail()
+      .normalizeEmail()
+      .withMessage("Please provide a valid email address"),
+    handleValidationErrors,
+  ],
+  forgotPassword
+);
+
+// Verify reset token
+router.get("/reset-password/:resetToken", verifyResetToken);
+
+// Reset password
+router.post(
+  "/reset-password",
+  [
+    body("resetToken").notEmpty().withMessage("Reset token is required"),
+    body("newPassword")
+      .isLength({ min: 6 })
+      .withMessage("New password must be at least 6 characters long"),
+    handleValidationErrors,
+  ],
+  resetPassword
 );
 
 module.exports = router;
